@@ -2,14 +2,18 @@
 
 import { Canvas, useFrame } from "@react-three/fiber";
 import { ScrollControls, Scroll, useScroll, Environment, Float, Sphere, useProgress, Html } from "@react-three/drei";
-import { useRef, useMemo, useState, Suspense } from "react";
+import { useRef, useMemo, useState, Suspense, useEffect } from "react";
 import * as THREE from "three";
-import { Document, Page, pdfjs } from 'react-pdf';
+import dynamic from "next/dynamic";
+
+// DYNAMIC IMPORTS: This forces Next.js to skip SSR for the PDF viewer, preventing Vercel build crashes.
+const Document = dynamic(() => import("react-pdf").then((mod) => mod.Document), { ssr: false });
+const Page = dynamic(() => import("react-pdf").then((mod) => mod.Page), { ssr: false });
+
 import 'react-pdf/dist/Page/AnnotationLayer.css';
 import 'react-pdf/dist/Page/TextLayer.css';
 
-pdfjs.GlobalWorkerOptions.workerSrc = `//unpkg.com/pdfjs-dist@${pdfjs.version}/build/pdf.worker.min.mjs`;
-
+// --- 1. THE CUSTOM LOADER ---
 function CanvasLoader() {
   const { progress } = useProgress();
   return (
@@ -22,6 +26,7 @@ function CanvasLoader() {
   );
 }
 
+// --- 2. THE 3D PARTICLES ---
 function ReactiveParticles() {
   const groupRef = useRef<THREE.Group>(null);
   const scroll = useScroll();
@@ -86,9 +91,26 @@ function ReactiveParticles() {
   );
 }
 
+// --- 3. MAIN PAGE COMPONENT ---
 export default function Home() {
-  const [isModalOpen, setIsModalOpen] = useState(false);
+  const [activeDocument, setActiveDocument] = useState<"paper" | "hardware" | null>(null);
   const [numPages, setNumPages] = useState<number>(0);
+  
+  // Vercel SSR Safety for the window object
+  const [windowWidth, setWindowWidth] = useState(800);
+
+  useEffect(() => {
+    // Only import the worker on the client side
+    import('react-pdf').then(({ pdfjs }) => {
+      pdfjs.GlobalWorkerOptions.workerSrc = `//unpkg.com/pdfjs-dist@${pdfjs.version}/build/pdf.worker.min.mjs`;
+    });
+    
+    // Safely set window width for responsive PDFs
+    setWindowWidth(window.innerWidth);
+    const handleResize = () => setWindowWidth(window.innerWidth);
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
 
   return (
     <main className="w-full h-screen bg-zinc-950 overflow-hidden relative select-none">
@@ -147,23 +169,37 @@ export default function Home() {
 
               {/* PAGE 4: THE PIPELINE & HARDWARE */}
               <section className="h-screen flex items-center justify-center px-6 md:px-20 pointer-events-none">
-                <div className="w-full max-w-6xl pointer-events-auto grid grid-cols-1 md:grid-cols-2 gap-12 items-center">
+                <div className="w-full max-w-7xl pointer-events-auto grid grid-cols-1 lg:grid-cols-12 gap-12 items-center">
                   
-                  {/* Left Side: The Circuit Blueprint */}
-                  <div className="relative group">
-                    {/* Glowing effect behind the image */}
-                    <div className="absolute -inset-1 bg-gradient-to-r from-emerald-500 to-sky-500 rounded-xl blur opacity-25 group-hover:opacity-50 transition duration-1000 group-hover:duration-200"></div>
-                    <div className="relative bg-zinc-900 border border-zinc-800 rounded-xl p-4">
-                      {/* Make sure your file is named exactly circuit.png in the public folder */}
-                      <img src="/circuit.png" alt="Arduino Circuit Schematic" className="w-full h-auto rounded-lg" />
-                      <div className="absolute bottom-6 right-6 bg-zinc-950/80 backdrop-blur text-xs px-3 py-1 rounded text-zinc-400 border border-zinc-800 uppercase tracking-widest">
-                        Fig 1. ATmega328P TDM Array
+                  {/* Native Hardware Widget */}
+                  <div className="lg:col-span-6 relative flex flex-col bg-zinc-900/80 backdrop-blur-md border border-zinc-800 rounded-2xl overflow-hidden shadow-2xl">
+                    <div className="flex items-center justify-between px-6 py-4 border-b border-zinc-800 bg-zinc-950/50">
+                      <div className="flex items-center gap-3">
+                        <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></div>
+                        <span className="text-xs font-semibold tracking-widest text-zinc-400 uppercase">Hardware Schematic</span>
                       </div>
+                      <span className="text-[10px] uppercase tracking-wider bg-sky-500/10 text-sky-400 px-2 py-1 rounded border border-sky-500/20">
+                        .BRD Ready
+                      </span>
+                    </div>
+                    
+                    <div className="p-6 bg-zinc-900 flex justify-center items-center">
+                      <img src="/circuit.png" alt="Arduino Circuit Schematic" className="w-full max-w-md h-auto mix-blend-screen opacity-80" />
+                    </div>
+
+                    <div className="px-6 py-4 border-t border-zinc-800 bg-zinc-950/50 flex justify-between items-center">
+                      <span className="text-sm text-zinc-500">ATmega328P TDM Array</span>
+                      <button 
+                        onClick={() => setActiveDocument("hardware")}
+                        className="text-xs font-semibold tracking-wider text-white hover:text-sky-400 transition-colors uppercase"
+                      >
+                        View Full Schematic →
+                      </button>
                     </div>
                   </div>
 
-                  {/* Right Side: The Logic */}
-                  <div>
+                  {/* The Logic */}
+                  <div className="lg:col-span-6">
                     <h2 className="text-3xl md:text-5xl font-semibold mb-6 text-white tracking-wide">The IoT Pipeline</h2>
                     <div className="h-px w-12 bg-emerald-500 mb-8"></div>
                     <div className="space-y-6 text-zinc-400">
@@ -172,11 +208,11 @@ export default function Home() {
                         <p>An ATmega328P micro-controller sequentially activates an RGB LED array. A GL5528 LDR wired in a precise voltage-divider digitizes optical transmittance.</p>
                       </div>
                       <div>
-                        <h3 className="text-emerald-400 font-medium tracking-wider uppercase text-sm mb-1">Tier 2: Kinetic Dashboard</h3>
+                        <h3 className="text-emerald-400 font-medium tracking-wider uppercase text-sm mb-1">Kinetic Dashboard</h3>
                         <p>Continuously refits the first-order kinetic decay model using weighted least-squares regression asynchronously.</p>
                       </div>
                       <div>
-                        <h3 className="text-emerald-400 font-medium tracking-wider uppercase text-sm mb-1">Tier 3: Compliance Engine</h3>
+                        <h3 className="text-emerald-400 font-medium tracking-wider uppercase text-sm mb-1">Compliance Engine</h3>
                         <p>Autonomously generates a tamper-evident, SHA-256 hashed PDF compliance report once the effluent achieves regulatory clarity.</p>
                       </div>
                     </div>
@@ -185,52 +221,59 @@ export default function Home() {
               </section>
 
               {/* PAGE 5: THE RESULTS */}
-              <section className="h-screen flex flex-col items-center justify-center text-center px-4 pointer-events-none">
-                <div className="pointer-events-auto bg-zinc-900/80 backdrop-blur-md border border-zinc-800 p-6 md:p-12 rounded-2xl w-full max-w-4xl max-h-[85dvh] overflow-y-auto [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]">
-                  <h2 className="text-2xl font-medium text-zinc-400 uppercase tracking-widest mb-8 mt-4 md:mt-0">Performance Validated</h2>
+              <section className="h-screen flex items-center justify-center px-6 md:px-20 pointer-events-none">
+                <div className="w-full max-w-7xl pointer-events-auto grid grid-cols-1 lg:grid-cols-12 gap-8 lg:gap-16 max-h-[90dvh] overflow-y-auto [&::-webkit-scrollbar]:hidden">
                   
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-8 mb-10 text-left">
-                    <div>
-                      <div className="text-5xl font-bold text-sky-400 mb-2">93%</div>
-                      <div className="text-zinc-300 font-medium text-lg mb-1">Pollutant Mass Removal</div>
-                      <div className="text-zinc-500 text-sm mb-4">Achieved in a continuous-flow 300s operational window.</div>
+                  {/* Left Column: Data & Actions */}
+                  <div className="lg:col-span-5 flex flex-col justify-center">
+                    <h2 className="text-sm font-semibold text-emerald-500 uppercase tracking-widest mb-4">Performance Validated</h2>
+                    <h3 className="text-3xl md:text-5xl font-light text-white mb-10">Industrial grade monitoring.<br/><span className="font-bold text-zinc-500">Accessible scale.</span></h3>
+                    
+                    <div className="space-y-8 mb-12">
+                      <div className="border-l-2 border-sky-500 pl-6">
+                        <div className="text-5xl font-bold text-sky-400 mb-1">93%</div>
+                        <div className="text-zinc-300 font-medium text-lg">Pollutant Mass Removal</div>
+                        <div className="text-zinc-500 text-sm">Achieved in a continuous-flow 300s window.</div>
+                      </div>
                       
-                      {/* Dark Mode Inverted Graphs */}
-                      <div className="grid grid-cols-2 gap-2 mt-auto">
-                        <img src="/fig1_calibration.png" alt="Calibration Graph" className="w-full h-auto rounded-lg invert hue-rotate-180 opacity-90" />
-                        <img src="/fig2_kinetic.png" alt="Kinetic Graph" className="w-full h-auto rounded-lg invert hue-rotate-180 opacity-90" />
+                      <div className="border-l-2 border-emerald-500 pl-6">
+                        <div className="text-5xl font-bold text-emerald-400 mb-1">&le;1000<span className="text-2xl ml-1">BDT</span></div>
+                        <div className="text-zinc-300 font-medium text-lg">Total Prototype Cost</div>
+                        <div className="text-zinc-500 text-sm">Using locally sourced Dinajpur rice husks.</div>
                       </div>
                     </div>
-                    
-                    <div>
-                      <div className="text-5xl font-bold text-emerald-400 mb-2">&le;1000<span className="text-2xl ml-1">BDT</span></div>
-                      <div className="text-zinc-300 font-medium text-lg mb-1">Instrumentation Cost</div>
-                      <div className="text-zinc-500 text-sm mb-6">Accessible capital expenditure for SMEs.</div>
-                      
-                      {/* Bill of Materials (BOM) Table */}
-                      <div className="bg-zinc-950 rounded-lg border border-zinc-800 overflow-hidden">
-                        <div className="px-4 py-2 bg-zinc-900 border-b border-zinc-800 text-xs text-zinc-400 font-semibold tracking-wider uppercase">
-                          Hardware Cost Breakdown (BOM)
-                        </div>
-                        <ul className="divide-y divide-zinc-800 text-sm text-zinc-300">
-                          <li className="flex justify-between px-4 py-2 hover:bg-zinc-800/50"><span>Arduino / ATmega328P</span> <span className="text-zinc-500">~600 BDT</span></li>
-                          <li className="flex justify-between px-4 py-2 hover:bg-zinc-800/50"><span>RGB LED & GL5528 LDR</span> <span className="text-zinc-500">~50 BDT</span></li>
-                          <li className="flex justify-between px-4 py-2 hover:bg-zinc-800/50"><span>Resistors & Jumpers</span> <span className="text-zinc-500">~50 BDT</span></li>
-                          <li className="flex justify-between px-4 py-2 hover:bg-zinc-800/50"><span>Custom Acrylic Housing</span> <span className="text-zinc-500">~150 BDT</span></li>
-                          <li className="flex justify-between px-4 py-2 hover:bg-zinc-800/50 text-emerald-400 font-medium"><span>Total Prototype Cost</span> <span>850 BDT</span></li>
-                        </ul>
+
+                    <button 
+                      onClick={() => setActiveDocument("paper")}
+                      className="w-full sm:w-auto px-8 py-4 bg-white text-zinc-950 font-semibold rounded-lg hover:bg-sky-400 hover:text-white transition-all duration-300 tracking-wide text-center"
+                    >
+                      Read Methodological Blueprint
+                    </button>
+                  </div>
+
+                  {/* Right Column: The Data Widgets */}
+                  <div className="lg:col-span-7 flex flex-col gap-6">
+                    <div className="bg-zinc-900/80 backdrop-blur-md border border-zinc-800 rounded-xl p-6 shadow-2xl flex flex-col sm:flex-row items-center gap-6">
+                      <div className="w-full sm:w-1/2">
+                         <h4 className="text-zinc-300 font-medium mb-2">Beer-Lambert Calibration</h4>
+                         <p className="text-xs text-zinc-500 mb-4">Sensor linearity confirmed within the experimental range (R² = 0.992).</p>
+                      </div>
+                      <div className="w-full sm:w-1/2 bg-black rounded-lg overflow-hidden border border-zinc-800">
+                        <img src="/fig1_calibration.png" alt="Calibration" className="w-full h-auto invert hue-rotate-180 opacity-80 hover:opacity-100 transition-opacity" />
+                      </div>
+                    </div>
+
+                    <div className="bg-zinc-900/80 backdrop-blur-md border border-zinc-800 rounded-xl p-6 shadow-2xl flex flex-col sm:flex-row items-center gap-6">
+                      <div className="w-full sm:w-1/2">
+                         <h4 className="text-zinc-300 font-medium mb-2">First-Order Kinetics</h4>
+                         <p className="text-xs text-zinc-500 mb-4">Real-time kinetic decay extraction triggering autonomous compliance reporting.</p>
+                      </div>
+                      <div className="w-full sm:w-1/2 bg-black rounded-lg overflow-hidden border border-zinc-800">
+                        <img src="/fig2_kinetic.png" alt="Kinetics" className="w-full h-auto invert hue-rotate-180 opacity-80 hover:opacity-100 transition-opacity" />
                       </div>
                     </div>
                   </div>
 
-                  <div className="pb-8 md:pb-0">
-                    <button 
-                      onClick={() => setIsModalOpen(true)}
-                      className="px-8 py-3 bg-zinc-100 text-zinc-950 font-semibold rounded-full hover:bg-sky-400 transition-colors duration-300 tracking-wide"
-                    >
-                      Read Full Research Paper
-                    </button>
-                  </div>
                 </div>
               </section>
 
@@ -240,18 +283,18 @@ export default function Home() {
         </Suspense>
       </Canvas>
 
-      {/* --- 4. THE PROTECTED PDF MODAL --- */}
-      {isModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-zinc-950/90 backdrop-blur-lg p-0 md:p-10">
+      {/* --- 4. THE DYNAMIC PDF MODAL --- */}
+      {activeDocument && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-zinc-950/95 backdrop-blur-xl p-0 md:p-10">
           <div className="relative w-full h-full md:max-w-6xl bg-zinc-900 md:border border-zinc-800 md:rounded-xl overflow-hidden flex flex-col shadow-2xl">
             
             <div className="flex justify-between items-center p-4 border-b border-zinc-800 bg-zinc-950 sticky top-0 z-10">
-              <h3 className="text-white font-medium tracking-wide text-sm md:text-base truncate pr-4">
-                Project ClearRiver: Methodological Blueprint
+              <h3 className="text-white font-medium tracking-wide text-sm md:text-base">
+                {activeDocument === "paper" ? "Methodological Blueprint" : "Hardware Schematic & PCB Data"}
               </h3>
               <button 
-                onClick={() => setIsModalOpen(false)}
-                className="text-zinc-400 hover:text-white transition-colors bg-zinc-800 px-3 py-1 rounded-md text-sm shrink-0"
+                onClick={() => setActiveDocument(null)}
+                className="text-zinc-400 hover:text-white transition-colors bg-zinc-800 px-4 py-2 rounded-md text-sm font-medium"
               >
                 ✕ Close
               </button>
@@ -262,9 +305,9 @@ export default function Home() {
               onContextMenu={(e) => e.preventDefault()}
             >
               <Document
-                file="/research_paper.pdf"
+                file={activeDocument === "paper" ? "/research_paper.pdf" : "/hardware_schematic.pdf"}
                 onLoadSuccess={({ numPages }) => setNumPages(numPages)}
-                loading={<div className="text-zinc-400 animate-pulse text-center w-full py-10">Loading Document Analysis...</div>}
+                loading={<div className="text-zinc-400 animate-pulse text-center w-full py-10">Loading Secure Document...</div>}
                 className="max-w-full flex flex-col items-center"
               >
                 {Array.from(new Array(numPages), (el, index) => (
@@ -274,7 +317,7 @@ export default function Home() {
                       renderTextLayer={false} 
                       renderAnnotationLayer={false}
                       className="max-w-full"
-                      width={typeof window !== "undefined" && window.innerWidth < 768 ? window.innerWidth - 32 : 800}
+                      width={windowWidth < 768 ? windowWidth - 32 : 800}
                     />
                   </div>
                 ))}
